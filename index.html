@@ -485,6 +485,20 @@
 
             if (!spieltagNum) return;
 
+            // --- DOPPEL-ERKENNUNG DIREKT AM ANFANG ---
+            let isDoppelMatch = blockName.toLowerCase().includes("doppel") || spielerKapellen.includes("/");
+
+            if (!spieltageMap[spieltagNum]) {
+                spieltageMap[spieltagNum] = {
+                    nummer: spieltagNum, datum: datum, gegnerTeam: gegnerTeam,
+                    endergebnis: endergebnis, bloecke: {}, alleSpieler: new Set()
+                };
+            }
+
+            let st = spieltageMap[spieltagNum];
+            if (endergebnis && !st.endergebnis) st.endergebnis = endergebnis;
+            if (!st.bloecke[blockName]) st.bloecke[blockName] = [];
+
             let autoShortLegs = 0;
             let dartLegsArray = [];
             let currentMatchShortLegs = [];
@@ -514,17 +528,6 @@
                 }
             }
 
-            if (!spieltageMap[spieltagNum]) {
-                spieltageMap[spieltagNum] = {
-                    nummer: spieltagNum, datum: datum, gegnerTeam: gegnerTeam,
-                    endergebnis: endergebnis, bloecke: {}, alleSpieler: new Set()
-                };
-            }
-
-            let st = spieltageMap[spieltagNum];
-            if (endergebnis && !st.endergebnis) st.endergebnis = endergebnis;
-            if (!st.bloecke[blockName]) st.bloecke[blockName] = [];
-
             let matchObj = {
                 id: idx,
                 spieler: spielerKapellen, gegner: gegnerName, ergebnis: ergebnisSpiel,
@@ -532,22 +535,13 @@
                 sgCount: autoShortLegs, achtzigerCount: match180Count, 
                 achtzigerRaw: hunderteachtzigerRaw,
                 hfString: hfString,
-                scoring: {
-                    s60: score60,
-                    s80: score80,
-                    s100: score100,
-                    s140: score140,
-                    s180: match180Count
-                }
+                scoring: { s60: score60, s80: score80, s100: score100, s140: score140, s180: match180Count }
             };
 
             st.bloecke[blockName].push(matchObj);
 
-            // Prüfen ob es ein Doppel ist
-            let isDoppelMatch = blockName.toLowerCase().includes("doppel") || spielerKapellen.includes("/");
-            let beteiligteSpieler = spielerKapellen.split("/").map(s => s.trim()).filter(s => s !== "");
-
             // Beteiligte Spieler für die Spieltag-Suche registrieren
+            let beteiligteSpieler = spielerKapellen.split("/").map(s => s.trim()).filter(s => s !== "");
             beteiligteSpieler.forEach(subP => {
                 let matchedKaderName = teamKader.find(tk => tk.toLowerCase() === subP.toLowerCase());
                 if (matchedKaderName) {
@@ -557,13 +551,12 @@
                 }
             });
 
-            // WICHTIG: Wenn es ein Doppel-Match ist, werden ab hier KEINERLEI 
-            // Statistiken auf die Spieler-Tabellen gerechnet!
+            // WICHTIG: Doppel-Matches hier komplett für die Spieler-Statistiken abbrechen!
             if (isDoppelMatch) {
                 return; 
             }
 
-            // --- AB HIER NUR EINZEL-BERECHNUNG ---
+            // --- AB HIER NUR REINE EINZEL-BERECHNUNG ---
             let isWin = false;
             let isLoss = false;
             if (ergebnisSpiel && ergebnisSpiel.includes(":")) {
