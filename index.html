@@ -267,6 +267,7 @@
 </head>
 <body>
     <div class="container">
+        <!-- Hauptüberschrift mit Aktualisieren-Button & Logos -->
         <div class="app-main-header">
             <button class="refresh-btn" id="refreshBtn" onclick="refreshData()">🔄 Daten aktualisieren</button>
             
@@ -280,13 +281,16 @@
             <div class="app-sync-info">⚡ Datenpflege & Bereitstellung: Jürgen Schützendorf</div>
         </div>
 
+        <!-- Live Suche -->
         <div class="search-wrapper">
             <input type="text" id="playerSearchInput" class="search-box-input" placeholder="🔍 Nach Spieler-Name suchen..." oninput="performLiveSearch()">
         </div>
 
         <div id="loadingMessage" style="text-align:center; color:#f59e0b; margin: 20px 0;">Lade Daten aus Google Sheets...</div>
 
+        <!-- Dashboard Grid (Side-by-Side Kacheln) -->
         <div class="dashboard-grid" id="statsGrid" style="display:none;">
+            <!-- Highlights & Bilanz Kachel -->
             <div class="premium-card">
                 <div class="card-header-title">
                     <h2>🏆 HIGHLIGHTS & BILANZ</h2>
@@ -308,6 +312,7 @@
                 </table>
             </div>
 
+            <!-- Scoring Kachel -->
             <div class="premium-card">
                 <div class="card-header-title">
                     <h2>🎯 SCORING-STATS</h2>
@@ -329,11 +334,14 @@
             </div>
         </div>
 
+        <!-- Schnellnavigation -->
         <div class="nav-links" id="navLinks" style="display:none;"></div>
 
+        <!-- Spieltage -->
         <div id="spieltageContainer"></div>
     </div>
 
+    <!-- Modal Pop-Up -->
     <div class="modal-overlay" id="matchModal">
         <div class="modal-content">
             <div class="modal-header">
@@ -549,7 +557,8 @@
                 }
             });
 
-            // WICHTIG: Doppel-Matches hier komplett für die Spieler-Statistiken überspringen!
+            // WICHTIG: Wenn es ein Doppel-Match ist, werden ab hier KEINERLEI 
+            // Statistiken auf die Spieler-Tabellen gerechnet!
             if (isDoppelMatch) {
                 return; 
             }
@@ -692,3 +701,213 @@
                     } else if (gegScore > kapScore) {
                         kapellenClass = "loser"; gegnerClass = "winner";
                     } else {
+                        kapellenClass = "draw"; gegnerClass = "draw";
+                    }
+                }
+            }
+
+            let cardHtml = `
+                <div class="card" id="spieltag-${st.nummer}" data-players="${playersDataAttr}">
+                    <div class="card-header">
+                        <div class="spieltag-label">SPIELTAG ${st.nummer} ${st.datum ? '• ' + st.datum : ''}</div>
+                        <div class="matchday-title-box">
+                            <span class="team-badge ${kapellenClass}">TV Kapellen 1</span>
+                            <span class="matchday-score">${scoreDisplay}</span>
+                            <span class="team-badge ${gegnerClass}">${st.gegnerTeam}</span>
+                        </div>
+                    </div>
+            `;
+
+            let matchCounter = 1;
+            Object.keys(st.bloecke).forEach(blockTitle => {
+                let lowerTitle = blockTitle.toLowerCase();
+                let badgeClass = "block-default";
+
+                if (lowerTitle.startsWith("1.") || lowerTitle.startsWith("1 ") || lowerTitle.includes("erster")) {
+                    badgeClass = "block-1";
+                } else if (lowerTitle.includes("doppel")) {
+                    badgeClass = "block-doppel";
+                } else if (lowerTitle.startsWith("2.") || lowerTitle.startsWith("2 ") || lowerTitle.includes("zweiter")) {
+                    badgeClass = "block-2";
+                }
+
+                cardHtml += `
+                    <div class="block-title-container">
+                        <span class="block-badge ${badgeClass}">${blockTitle}</span>
+                    </div>
+                `;
+
+                st.bloecke[blockTitle].forEach(match => {
+                    globalMatchStore[match.id] = match;
+                    
+                    let leftWins = false, rightWins = false;
+                    if (match.ergebnis && match.ergebnis.includes(":")) {
+                        let parts = match.ergebnis.split(":");
+                        if (parseInt(parts[0]) > parseInt(parts[1])) leftWins = true;
+                        else if (parseInt(parts[1]) > parseInt(parts[0])) rightWins = true;
+                    }
+
+                    let searchRowPlayers = match.spieler.split("/").map(s => s.trim().toLowerCase()).join("||");
+
+                    cardHtml += `
+                        <div class="match-row" data-row-players="${searchRowPlayers}" onclick="openModal(${match.id})">
+                            <div class="match-num">${matchCounter++}</div>
+                            <div class="match-players">
+                                <div class="player-side left ${leftWins ? 'winner' : ''}">
+                                    ${match.spieler} <span class="avg-tag">(${match.avg || '—'})</span>
+                                </div>
+                                <div class="score-tag">${match.ergebnis}</div>
+                                <div class="player-side right ${rightWins ? 'winner' : ''}">
+                                    ${match.gegner}
+                                </div>
+                            </div>
+                            <div class="stats-icon">📊</div>
+                        </div>
+                    `;
+                });
+            });
+
+            cardHtml += `</div>`;
+            container.innerHTML += cardHtml;
+        });
+    }
+
+    function openModal(matchId) {
+        let m = globalMatchStore[matchId];
+        if(!m) return;
+
+        document.getElementById("modalTitle").innerText = `${m.spieler} vs. ${m.gegner}`;
+        
+        let legsHtml = "";
+        if (m.dartsArray.length > 0) {
+            legsHtml = m.dartsArray.map((d, i) => `
+                <tr>
+                    <td>Leg ${i + 1}</td>
+                    <td style="font-weight:bold; color:${d <= 18 ? '#34d399' : '#fff'}">${d} Darts ${d <= 18 ? '⚡ (SL)' : ''}</td>
+                </tr>
+            `).join("");
+        } else {
+            legsHtml = `<tr><td colspan="2">Keine Leg-Darts eingetragen</td></tr>`;
+        }
+
+        let isDoppel = m.spieler.includes("/");
+
+        let display180 = "—";
+        if (m.achtzigerCount > 0) {
+            display180 = m.achtzigerCount + "x";
+        } else if (m.achtzigerRaw && m.achtzigerRaw.trim() !== "") {
+            display180 = m.achtzigerRaw; 
+        }
+
+        let scoringSection = "";
+        if (!isDoppel) {
+            scoringSection = `
+                <div class="modal-section-title">Scoring</div>
+                <table class="modal-table">
+                    <thead>
+                        <tr class="scoring-header-row">
+                            <th style="text-align:left; width: 35%;"></th>
+                            <th>60+</th>
+                            <th>80+</th>
+                            <th>100+</th>
+                            <th>140+</th>
+                            <th>180</th>
+                        </tr>
+                    </thead>
+                    <tbody class="scoring-table-body">
+                        <tr>
+                            <td class="p-name">${m.spieler}</td>
+                            <td>${m.scoring ? m.scoring.s60 : '0'}</td>
+                            <td>${m.scoring ? m.scoring.s80 : '0'}</td>
+                            <td>${m.scoring ? m.scoring.s100 : '0'}</td>
+                            <td>${m.scoring ? m.scoring.s140 : '0'}</td>
+                            <td>${m.scoring ? m.scoring.s180 : '0'}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            `;
+        }
+
+        document.getElementById("modalBody").innerHTML = `
+            <div style="text-align:center; font-size: 20px; font-weight:bold; margin-bottom: 15px; color:#f59e0b;">
+                Ergebnis: ${m.ergebnis}
+            </div>
+            
+            <div class="modal-section-title">Averages</div>
+            <table class="modal-table">
+                <thead><tr><th>Spieler / Paar</th><th>3-Dart Avg</th></tr></thead>
+                <tbody>
+                    <tr><td class="p-name">${m.spieler}</td><td style="color:#f59e0b; font-weight:bold;">${m.avg || '—'}</td></tr>
+                </tbody>
+            </table>
+
+            <div class="modal-section-title">Darts pro Leg</div>
+            <table class="modal-table">
+                <thead><tr><th>Leg</th><th>Geworfene Darts</th></tr></thead>
+                <tbody>${legsHtml}</tbody>
+            </table>
+
+            ${scoringSection}
+
+            <div class="modal-section-title">${isDoppel ? 'Highlights Doppel-Match' : 'Highlights Match'}</div>
+            <div style="font-size:13px; background:#0f172a; padding:10px; border-radius:6px; border: 1px solid #334155;">
+                🎯 <b>180er:</b> ${display180}<br>
+                🔥 <b>High Finish:</b> ${m.hfString || '—'}<br>
+                ⚡ <b>Short Legs (≤18 Darts):</b> ${m.sgCount}x
+            </div>
+        `;
+
+        document.getElementById("matchModal").style.display = "flex";
+    }
+
+    function closeModal() {
+        document.getElementById("matchModal").style.display = "none";
+    }
+
+    function performLiveSearch() {
+        const query = document.getElementById('playerSearchInput').value.toLowerCase().trim();
+        
+        document.querySelectorAll('.hl-player-row').forEach(row => {
+            const name = row.getAttribute('data-player-name') || '';
+            if (query === '') {
+                row.classList.remove('row-faded', 'row-matched');
+            } else if (name.includes(query)) { 
+                row.classList.add('row-matched'); 
+                row.classList.remove('row-faded'); 
+            } else { 
+                row.classList.add('row-faded'); 
+                row.classList.remove('row-matched'); 
+            }
+        });
+
+        document.querySelectorAll('.card').forEach(card => {
+            const cardPlayers = card.getAttribute('data-players') || '';
+            let cardHasMatch = false;
+
+            card.querySelectorAll('.match-row').forEach(row => {
+                const rowPlayers = row.getAttribute('data-row-players') || '';
+                if (query === '') {
+                    row.style.display = 'flex';
+                    row.classList.remove('row-matched');
+                } else if (rowPlayers.includes(query)) {
+                    row.style.display = 'flex';
+                    row.classList.add('row-matched');
+                    cardHasMatch = true;
+                } else {
+                    row.style.display = 'none';
+                    row.classList.remove('row-matched');
+                }
+            });
+
+            if (query === '') {
+                card.style.display = 'block';
+            } else if (cardHasMatch || cardPlayers.includes(query)) {
+                card.style.display = 'block';
+            } else {
+                card.style.display = 'none';
+            }
+        });
+    }
+    </script>
+</body>
+</html>
